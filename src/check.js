@@ -1,0 +1,115 @@
+// Format eligibility checks for Live Photo wallpapers.
+//
+// These are the checks iOS appears to apply before it will animate a Live Photo
+// on the Lock Screen. Each is reported independently: iOS gives you one opaque
+// "Motion not available", so knowing *which* field is missing is the whole point.
+//
+// Caveat that belongs in every consumer of this module: passing every check does
+// not guarantee iOS will animate the file. Format is necessary, not sufficient —
+// content still matters (see the motion indices).
+
+import { readAssetIdentifier } from './heic.js';
+import { readMetadata, readDuration, readTracks, hasStillImageTime, videoCodec } from './mov.js';
+
+const QT = 'com.apple.quicktime.';
+export const PASS = 'pass', FAIL = 'fail', WARN = 'warn';
+
+const check = (id, status, title, detail) => ({ id, status, title, detail });
+
+/**
+ * @param {ArrayBuffer|Uint8Array|null} movBuffer
+ * @param {ArrayBuffer|Uint8Array|null} heicBuffer  optional; pairing is skipped without it
+ */
+export function checkLivePhoto(movBuffer, heicBuffer = null) {
+  const dv = (b) => b == null ? null
+    : b instanceof DataView ? b
+    : ArrayBuffer.isView(b) ? new DataView(b.buffer, b.byteOffset, b.byteLength)
+    : new DataView(b);
+
+  const mov = dv(movBuffer);
+  const heic = dv(heicBuffer);
+  const checks = [];
+
+  if (!mov) {
+    return { checks: [check('mov', FAIL, 'No video supplied', 'A Live Photo is a still plus a short video; the video half is missing.')], ok: false };
+  }
+
+  const meta = readMetadata(mov);
+  const tracks = readTracks(mov);
+  const has = (k) => (QT + k) in meta;
+  const text = (k) => meta[QT + k]?.text ?? null;
+
+  // 1. content.identifier — the UUID that pairs video to still.
+  const contentId = text('content.identifier');
+  checks.push(contentId
+    ? check('content-identifier', PASS, 'Video has a content identifier', contentId)
+    : check('content-identifier', FAIL, 'Video has no content identifier',
+        `The video is missing ${QT}content.identifier, so iOS cannot pair it with a still image.`));
+
+  // 2. assetIdentifier in the HEIC, and it must match.
+  if (heic) {
+    const assetId = readAssetIdentifier(heic);
+    if (!assetId) {
+      checks.push(check('asset-identifier', FAIL, 'Still image has no asset identifier',
+        'The HEIC is missing Apple MakerNote tag 17 (assetIdentifier). Most non-Apple encoders drop it.'));
+    } else if (contentId && assetId !== contentId) {
+      checks.push(check('asset-identifier', FAIL, 'Identifiers do not match',
+        `Still says ${assetId}, video says ${contentId}. They must be identical.`));
+    } else {
+      checks.push(check('asset-identifier', PASS, 'Still and video identifiers match', assetId));
+    }
+  }
+
+  // 3. still-image-time — marks which frame is the key photo.
+  checks.push(hasStillImageTime(mov, tracks)
+    ? check('still-image-time', PASS, 'Key-frame marker present',
+        'A timed metadata track carries still-image-time.')
+    : check('still-image-time', FAIL, 'Key-frame marker missing',
+        `No timed metadata track carries ${QT}still-image-time, so iOS does not know which frame is the still.`));
+
+  // 4. The vitality triad. Note: much published advice points at
+  // com.apple.quicktime.live-photo-info instead. That field is absent from
+  // every device-verified eligible file we have tested; these three are what
+  // actually appear. See README.
+  const triad = ['live-photo.auto', 'live-photo.vitality-score', 'live-photo.vitality-scoring-version'];
+  const missing = triad.filter((k) => !has(k));
+  if (missing.length === 0) {
+    const scoreEntry = meta[QT + 'live-photo.vitality-score'];
+    let score = null;
+    if (scoreEntry?.bytes.length >= 4) {
+      const b = scoreEntry.bytes;
+      score = new DataView(b.buffer, b.byteOffset, b.byteLength).getFloat32(0);
+    }
+    checks.push(check('vitality', PASS, 'Live Photo vitality metadata present',
+      score === null ? 'auto, vitality-score and scoring-version are all set.'
+                     : `vitality-score = ${score.toFixed(3)}.`));
+  } else {
+    checks.push(check('vitality', FAIL, 'Live Photo vitality metadata missing',
+      `Absent: ${missing.map((k) => QT + k).join(', ')}. Files without these are treated as an ordinary video.`));
+  }
+
+  // 5. Duration. iOS animates roughly a 1-2 second clip.
+  const duration = readDuration(mov);
+  if (duration == null) {
+    checks.push(check('duration', WARN, 'Could not read duration', 'The movie header is missing or unreadable.'));
+  } else if (duration >= 1 && duration <= 3.05) {
+    checks.push(check('duration', PASS, 'Duration is in range', `${duration.toFixed(2)}s.`));
+  } else {
+    checks.push(check('duration', WARN, 'Duration is outside the usual range',
+      `${duration.toFixed(2)}s. Wallpaper-eligible Live Photos are typically 1-3s; iOS plays only a short window near the key frame.`));
+  }
+
+  // 6. Codec. A re-encoded track has been observed to break eligibility even
+  // when every metadata field is correct, so this is a warning worth surfacing.
+  const codec = videoCodec(mov, tracks);
+  if (!codec) {
+    checks.push(check('codec', FAIL, 'No video track', 'The file contains no video track.'));
+  } else if (codec.isHEVC) {
+    checks.push(check('codec', PASS, 'Video track is HEVC', `Sample format ${codec.format}.`));
+  } else {
+    checks.push(check('codec', WARN, 'Video track is not HEVC',
+      `Sample format ${codec.format}. Apple captures Live Photos as HEVC; other codecs are less reliable.`));
+  }
+
+  return { checks, ok: checks.every((c) => c.status !== FAIL) };
+}
