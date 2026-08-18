@@ -64,3 +64,27 @@ test('motion indices separate camera movement from subject movement', () => {
 test('at least two frames are required', () => {
   assert.throws(() => computeIndices([new Uint8Array(4)], { width: 2, height: 2 }), /two frames/);
 });
+
+test('a still image alone still answers whether the pairing survived', { skip: !have('eligible.HEIC') && 'add test/fixtures/eligible.HEIC' }, () => {
+  // iOS hands a web page the still and keeps the video, so this is the only
+  // check a phone can ever run. It has to say something useful.
+  const r = checkLivePhoto(null, load('eligible.HEIC'));
+  assert.equal(r.partial, true);
+  assert.equal(r.ok, true);
+  assert.equal(r.checks[0].id, 'asset-identifier');
+});
+
+test('a still with no assetIdentifier is a conclusive failure', () => {
+  // Not a real HEIC, so the parser finds nothing - which is the same outcome as
+  // a re-saved photo that lost its MakerNote.
+  const r = checkLivePhoto(null, new Uint8Array(64));
+  assert.equal(r.partial, true);
+  assert.equal(r.ok, false);
+  assert.equal(r.checks[0].status, FAIL);
+});
+
+test('supplying nothing is reported, not thrown', () => {
+  const r = checkLivePhoto(null, null);
+  assert.equal(r.ok, false);
+  assert.equal(r.checks[0].id, 'input');
+});

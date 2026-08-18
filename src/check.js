@@ -30,8 +30,22 @@ export function checkLivePhoto(movBuffer, heicBuffer = null) {
   const heic = dv(heicBuffer);
   const checks = [];
 
+  // Still-only is a real case, not an error: iOS hands a web page the still
+  // and keeps the video to itself, so on a phone this is all you can get. The
+  // assetIdentifier alone still answers a useful question - whether the still
+  // half has kept its half of the pairing.
   if (!mov) {
-    return { checks: [check('mov', FAIL, 'No video supplied', 'A Live Photo is a still plus a short video; the video half is missing.')], ok: false };
+    if (!heic) {
+      return { checks: [check('input', FAIL, 'No file supplied', 'Choose the video, the still image, or both.')], ok: false, partial: true };
+    }
+    const assetId = readAssetIdentifier(heic);
+    return {
+      partial: true,
+      ok: !!assetId,
+      checks: [assetId
+        ? check('asset-identifier', PASS, 'The still image is still paired', `It carries assetIdentifier ${assetId}, so it has not been stripped or re-saved. The video half is needed to check the remaining requirements.`)
+        : check('asset-identifier', FAIL, 'The still image has lost its pairing', 'No assetIdentifier in the Apple MakerNote. Whatever produced this file dropped it, and without it iOS cannot match the still to any video - so it will never animate, regardless of what the video contains.')],
+    };
   }
 
   const meta = readMetadata(mov);
