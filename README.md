@@ -13,9 +13,9 @@ $ livephoto-check wallpaper.mov wallpaper.HEIC
 [  OK  ] Still and video identifiers match
 [  OK  ] Key-frame marker present
 [  OK  ] Live Photo vitality metadata present
+[  OK  ] Motion sensor track present
 [  OK  ] Duration is in range
 [  OK  ] Video track is HEVC
-
 Format checks passed.
 iOS makes the final call: passing every check does not guarantee it will animate.
 ```
