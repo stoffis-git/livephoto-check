@@ -1,6 +1,6 @@
 {
   "name": "livephoto-check",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Check whether an Apple Live Photo will be accepted as an animated iPhone Lock Screen wallpaper.",
   "type": "module",
   "main": "src/check.js",
