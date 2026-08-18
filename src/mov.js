@@ -113,6 +113,28 @@ export function hasStillImageTime(view, tracks) {
   });
 }
 
+/**
+ * Detect the live-photo-info timed metadata track.
+ *
+ * This is where the motion-sensor data actually lives, and why a parser that
+ * only reads moov/meta will not find it: it is not a single metadata value but
+ * a track whose sample description declares the key
+ * `com.apple.quicktime.live-photo-info`, carrying roughly one sample per video
+ * frame. In a camera-captured Live Photo that track runs the length of the clip.
+ */
+export function livePhotoInfoTrack(view, tracks) {
+  for (const t of tracks) {
+    if (t.handler !== 'meta') continue;
+    const bytes = new Uint8Array(
+      view.buffer, view.byteOffset + t.box.payloadStart, t.box.end - t.box.payloadStart,
+    );
+    if (!utf8(bytes).includes('com.apple.quicktime.live-photo-info')) continue;
+    const stsz = find(view, 'mdia/minf/stbl/stsz', t.box.payloadStart, t.box.end);
+    return { present: true, samples: stsz ? view.getUint32(stsz.payloadStart + 8) : 0 };
+  }
+  return { present: false, samples: 0 };
+}
+
 const HEVC = new Set(['hvc1', 'hev1']);
 
 export function videoCodec(view, tracks) {

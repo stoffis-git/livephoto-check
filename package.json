@@ -1,6 +1,6 @@
 {
   "name": "livephoto-check",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Check whether an Apple Live Photo will be accepted as an animated iPhone Lock Screen wallpaper.",
   "type": "module",
   "main": "src/check.js",
@@ -14,36 +14,14 @@
   "keywords": [
     "live-photo",
     "ios",
-    "iphone",
     "wallpaper",
-    "lock-screen",
     "heic",
     "quicktime",
-    "exif",
-    "iso-bmff",
-    "metadata"
+    "exif"
   ],
   "files": [
     "src",
     "bin",
-    "README.md",
-    "LICENSE"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/stoffis-git/livephoto-check.git"
-  },
-  "homepage": "https://lockimate.com/tools/live-photo-check/",
-  "bugs": {
-    "url": "https://github.com/stoffis-git/livephoto-check/issues"
-  },
-  "author": "Christoph Wackher",
-  "engines": {
-    "node": ">=18"
-  },
-  "exports": {
-    ".": "./src/check.js",
-    "./motion": "./src/motion.js",
-    "./package.json": "./package.json"
-  }
+    "README.md"
+  ]
 }

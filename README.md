@@ -20,29 +20,37 @@ Format checks passed.
 iOS makes the final call: passing every check does not guarantee it will animate.
 ```
 
-## Try it without installing anything
+## A correction, and how it happened
 
-There is a hosted build of the format checks at
-**[lockimate.com/tools/live-photo-check](https://lockimate.com/tools/live-photo-check/)** —
-drop in a `.HEIC` and `.MOV` and it names the requirement that failed. It runs
-this library in the browser, so the files stay on your machine. A companion
-[metadata inspector](https://lockimate.com/tools/live-photo-inspector/) dumps
-the raw QuickTime keys, tracks and container boxes when you want the structure
-rather than a verdict.
+**An earlier version of this README (v0.1.0–v0.3.1) claimed that
+`com.apple.quicktime.live-photo-info` is absent from working Live Photos and
+that the widely repeated advice about it is wrong. That claim was mistaken and
+has been withdrawn.**
 
-## The field everyone points at is the wrong one
+The atom is present. It is not a single metadata value in `moov/meta`, which is
+where the first version of this parser looked — it is a **timed metadata
+track**: a `trak` whose sample description declares the key
+`com.apple.quicktime.live-photo-info` and which carries roughly one sample per
+video frame. In the camera-captured file used as a fixture here, that track
+holds 60 samples across a 1.08 second clip.
 
-Search for this problem and you will be told the answer is an undocumented
-QuickTime atom called `com.apple.quicktime.live-photo-info` — the theory being
-that it holds gyroscope data from the camera, and that third-party Live Photos
-fail because they can't produce it.
+That structure is the point. Per-frame sensor data has to vary over time, so a
+track is the natural shape for it and a static metadata field is not. A parser
+that only reads `moov/meta` sees nothing and concludes absence, which is exactly
+the error made here.
 
-**We checked. That atom is absent from every file we tested, including files
-confirmed to animate on a real device.** It is absent from Live Photos produced
-by [goLive](https://github.com/code-path/goLive), and absent from a
-camera-captured pair that we verified animating on an iPhone.
+The received account of this field was right, and this library now checks for
+it directly. The lesson worth keeping is narrower: **absence of evidence in one
+container is not evidence of absence.** You can see the track yourself:
 
-What eligible files *actually* carry is a group of three fields:
+```sh
+ffprobe -v error -show_streams your.mov | grep -A3 'codec_tag_string=mebx'
+```
+
+## What eligible files carry
+
+Alongside the sensor track, Live Photos that iOS accepts as wallpaper also
+carry three static fields in `moov/meta`:
 
 | Key | Type | Observed value |
 |---|---|---|
@@ -50,21 +58,13 @@ What eligible files *actually* carry is a group of three fields:
 | `com.apple.quicktime.live-photo.vitality-score` | float32 | `1.0` |
 | `com.apple.quicktime.live-photo.vitality-scoring-version` | int64 | `4` |
 
-You can confirm this yourself in one line against any Live Photo that works:
-
 ```sh
-exiftool -G1 -a your-live-photo.mov | grep -i 'live-photo'
+exiftool -G1 -a your.mov | grep -i 'live-photo'
 ```
-
-We are publishing this because the wrong answer is repeated widely enough that
-people give up on a fixable problem. If you find a counter-example — a file that
-animates and *does* carry `live-photo-info` — please open an issue. The test
-suite asserts the field's absence precisely so that a future iOS release
-changing this will fail loudly rather than silently.
 
 ## What it checks
 
-A Live Photo is a HEIC still plus a MOV video, joined by a shared UUID. All six
+A Live Photo is a HEIC still plus a MOV video, joined by a shared UUID. All seven
 checks are reported independently, because the useful information is *which* one
 is missing:
 
@@ -74,9 +74,12 @@ is missing:
 3. **`still-image-time`** — a timed metadata track marking which frame is the
    key photo. Without it iOS doesn't know where the still sits in the timeline.
 4. **The vitality group** above.
-5. **Duration** — wallpaper-eligible Live Photos run about 1–3 seconds. iOS
+5. **The `live-photo-info` timed metadata track** — per-frame motion-sensor data
+   the camera records at capture. Converted and generated clips have none, which
+   is why goLive transplants the track from a genuine capture.
+6. **Duration** — wallpaper-eligible Live Photos run about 1–3 seconds. iOS
    plays only a short window leading into the key frame.
-6. **Codec** — Apple captures Live Photos as HEVC. Other codecs are less
+7. **Codec** — Apple captures Live Photos as HEVC. Other codecs are less
    reliable, and a re-encoded video track can break eligibility even when every
    metadata field is correct.
 
@@ -131,18 +134,6 @@ need frame data, so `bin/measure.js` shells out to ffmpeg and is Node-only.
 node bin/measure.js clip.mov   # MVI / MSI as JSON
 npm test
 ```
-
-### Running the full test suite
-
-The synthetic tests run anywhere. The tests that read real files skip unless you
-supply your own, because nobody's photos ship with this library:
-
-```
-test/fixtures/eligible.mov + eligible.HEIC   a pair you have confirmed animating
-test/fixtures/plain.mov                      any ordinary video
-```
-
-That directory is gitignored. `npm test` tells you which fixtures are missing.
 
 ## Prior work
 
