@@ -59,7 +59,7 @@ carry three static fields in `moov/meta`:
 | `com.apple.quicktime.live-photo.vitality-scoring-version` | int64 | `4` |
 
 ```sh
-exiftool -G1 -a your.mov | grep -i 'live-photo'
+exiftool -G1 -a -s your.mov | grep -i LivePhoto
 ```
 
 ## What it checks
