@@ -17,6 +17,17 @@ export const PASS = 'pass', FAIL = 'fail', WARN = 'warn';
 const check = (id, status, title, detail) => ({ id, status, title, detail });
 
 /**
+ * HEIC is ISO-BMFF: bytes 4-8 are 'ftyp'. A JPEG starts 0xFFD8 and has no box
+ * structure at all, so this cleanly separates an original still from a copy a
+ * phone transcoded on its way into the browser.
+ */
+function looksLikeHeic(view) {
+  if (view.byteLength < 12) return false;
+  const tag = String.fromCharCode(view.getUint8(4), view.getUint8(5), view.getUint8(6), view.getUint8(7));
+  return tag === 'ftyp';
+}
+
+/**
  * @param {ArrayBuffer|Uint8Array|null} movBuffer
  * @param {ArrayBuffer|Uint8Array|null} heicBuffer  optional; pairing is skipped without it
  */
@@ -31,13 +42,27 @@ export function checkLivePhoto(movBuffer, heicBuffer = null) {
   const checks = [];
 
   // Still-only is a real case, not an error: iOS hands a web page the still
-  // and keeps the video to itself, so on a phone this is all you can get. The
-  // assetIdentifier alone still answers a useful question - whether the still
-  // half has kept its half of the pairing.
+  // and keeps the video to itself, so on a phone this is all you can get.
   if (!mov) {
     if (!heic) {
       return { checks: [check('input', FAIL, 'No file supplied', 'Choose the video, the still image, or both.')], ok: false, partial: true };
     }
+
+    // Device-verified on iOS 26.6: picking a Live Photo through a file input
+    // yields a transcoded JPEG, not the original HEIC. That copy is not the
+    // file iOS would use as a wallpaper, so no verdict about it is meaningful -
+    // and reporting "pairing lost" for it would tell someone their perfectly
+    // good photo is broken. Detect the substitution and say what happened.
+    if (!looksLikeHeic(heic)) {
+      return {
+        partial: true,
+        ok: false,
+        transcoded: true,
+        checks: [check('transcoded', WARN, 'This is a converted copy, not the original',
+          'The file is not a HEIC, so it is not the Live Photo still that lives on the device. Picking a Live Photo from a phone hands the browser a flattened JPEG with the video half stripped, and nothing can be concluded from it either way. Use the original files instead.')],
+      };
+    }
+
     const assetId = readAssetIdentifier(heic);
     return {
       partial: true,
