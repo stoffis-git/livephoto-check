@@ -20,6 +20,16 @@ Format checks passed.
 iOS makes the final call: passing every check does not guarantee it will animate.
 ```
 
+## Try it without installing anything
+
+There is a hosted build of the format checks at
+**[lockimate.com/tools/live-photo-check](https://lockimate.com/tools/live-photo-check/)** —
+drop in a `.HEIC` and `.MOV` and it names the requirement that failed. It runs
+this library in the browser, so the files stay on your machine. A companion
+[metadata inspector](https://lockimate.com/tools/live-photo-inspector/) dumps
+the raw QuickTime keys, tracks and container boxes when you want the structure
+rather than a verdict.
+
 ## The field everyone points at is the wrong one
 
 Search for this problem and you will be told the answer is an undocumented
